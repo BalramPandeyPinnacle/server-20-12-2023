@@ -5,6 +5,7 @@ const { readdirSync } = require('fs');
 const mongoose=require('mongoose');
 const Course=require('./models/course');
 const User=require('./models/user');
+const CourseContent=require('./models/courseContent');
 require('dotenv').config();
 //create express app
 const app=express();
@@ -96,48 +97,7 @@ app.get("/courses/ssc", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
-// Buy this course route
-app.post("/purchase/:userId/:courseId", async (req, res) => {
-  try {
-    const { userId, courseId } = req.params;
-
-    // Find the user and course
-    const user = await User.findById(userId);
-    const course = await Course.findById(courseId);
-
-    // Check if both user and course exist
-    if (!user || !course){
-      return res.status(404).json({ error: 'User or Course not found' });
-    }
-
-    // Check if the course is not already purchased by the user
-    if (!user.purchasedCourses.includes(courseId))
-    {
-      // Add the course ID to the purchasedCourses array
-      user.purchasedCourses.push(courseId);
-
-      // Save the updated user
-      await user.save();
-
-      // You can add any other logic related to the purchase here, such as updating course details, handling payments, etc.
-
-      // Return a success response
-      return res.json({ message: 'Purchase successful', user });
-    } else {
-      // Handle the case where the course is already in the purchasedCourses array
-      return res.status(400).json({ error: 'Course already purchased by the user' });
-    }
-  } catch (error) {
-    console.error('Error purchasing course:', error);
-    res.status(500).json({ error: 'Internal Server Error'});
-  }
-});
-
-
-
 //filtering railway
-
 app.get("/courses/railway", async (req, res) => {
   try {
     const RailwayCourses = await Course.find({ category: "railway" });
@@ -164,7 +124,77 @@ app.get('/search/:key',async(req,res)=>{
   });
   res.send(result);
 })
+// route to get purchased courses 
+app.get('/purchased-courses/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
 
+    // Find the user by ID
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get the list of purchased course IDs from the user document
+    const purchasedCourseIds = user.purchasedCourses || [];
+
+    // Find the purchased courses using the IDs
+    const purchasedCourses = await Course.find({ _id: { $in: purchasedCourseIds } });
+
+    res.json({ success: true, purchasedCourses });
+  } catch (error) {
+    console.error('Error while fetching purchased courses:', error);
+    res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
+  }
+});
+
+
+
+
+app.post('/purchase/:userId/:courseId', async (req, res) => {
+  try {
+    const userId = req.params.userId; // Get the user ID from the request parameters
+    const courseId = req.params.courseId; // Get the course ID from the request parameters
+
+    // Update the user document with the purchased course
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $push: { purchasedCourses: courseId } },
+      { new: true }
+    );
+
+    // Handle the result, send a response, etc.
+    res.json({ success: true, message: 'Course purchased successfully', user });
+  } catch (error) {
+    console.error('Error during purchase:', error);
+    res.status(500).json({ success: false, message: 'Failed to purchase course', error: error.message });
+  }
+});
+
+
+//courseContent Routes
+
+// Create new course content
+app.post('/add-courseContent', async (req, res) => {
+  try {
+    const courseContent = new CourseContent(req.body);
+    await courseContent.save();
+    res.status(201).json(courseContent);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Get all course content for a specific course
+app.get('/course/:courseId', async (req, res) => {
+  try {
+    const courseContent = await CourseContent.find({ courseId: req.params.courseId });
+    res.json(courseContent);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 //routes
 readdirSync("./routes").map((r)=>app.use("/api",require(`./routes/${r}`)));
